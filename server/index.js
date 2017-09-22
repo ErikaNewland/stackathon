@@ -1,67 +1,59 @@
-/**
- * nytimestream
- */
+const express = require('express');
+const path = require('path');
+const db = require('./db');
+const session = require('express-session');
 
-const _ = require('lodash'),
-const app = express()
-const express = require('express'),
-const socketio = require('socket.io');
+const app = express();
 
-const nytimes_key = process.env.NYTIMES_KEY,
-const poll_interval = process.env.POLL_TIME || 1000 * 60,
-const heartbeat_timeout = 1000 * 30,
-const seen = [],
-const latest = [],
-const sockets = [],
-const streams = [];
 
-/**
-* look for new stories
-*
-* @param {Function} a callback that receives a new story
-*/
+// general purpose middleware
+app.use(require('./middleware/logging'));
+app.use(require('./middleware/body-parsing'));
+app.use(express.static(path.join(__dirname, '../public')));
 
-function poll(f) {
-    console.log("polling for new stories");
-    nytimes(function (news) {
-        _.each(news, function (i) {
-            if (!_.include(seen, i.url)) {
-                f(i);
-                seen.push(i.url);
-                // to avoid memory bloat, only remember last 1000 urls
-                seen = _.last(seen, 1000);
-            }
-        });
-    });
-    setTimeout(poll, poll_interval, f);
-};
+// configure and create our database store
+// store session information on postgres database to restart without interrupting users
+// const SequelizeStore = require('connect-session-sequelize')(session.Store);
+// const dbStore = new SequelizeStore({ db: db });
 
-/**
-* fetch new stories from the NYTimes API
-*
-* @param {Function} a callback that receives current stories
-*/
+// dbStore.sync();  //DO WE WANT TO HAVE HTIS BEFORE 
 
-function nytimes(f) {
-    options = {
-        "host": "api.nytimes.com",
-        "path": "/svc/news/v2/all/recent.json?api-key=" + nytimes_key
-    };
-    console.log("http://" + options.host + options.path);
-    app.get(options, function (res) {
-        var json = "";
-        res.on('data', function (chunk) {
-            json += chunk;
-        });
-        res.on('end', function () {
-            if (res.statusCode == 200) {
-                console.log(json);
-                times = JSON.parse(json);
-                latest = times.results.reverse().slice(10);
-                f(latest);
-            }
-        });
-    }).on('error', function (e) {
-        console.log("error: " + e);
-    });
-}
+// session middleware
+// app.use(session({
+//   secret: process.env.SESSION_SECRET || 'a wildly insecure secret',
+//   store: dbStore,
+//   resave: false,
+//   saveUninitialized: true
+// }));
+
+// app.use(require('./middleware/passport'));
+
+// serve api routes
+app.use('/api', require('./api')); // matches all requests to /api
+
+// error handling
+// app.use(require('./middleware/error'));
+
+// serve index.html for all non-api routes
+app.get('*', function (req, res) {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+
+// process.env.PORT for deploying to Heroku or 3000 for local
+const port = process.env.PORT || 3000; 
+
+// sync our database
+// db.sync() 
+//   .then(function(){
+//   	// then start listening with our express server once we have synced
+//     app.listen(port, function () {
+// 	  console.log("Knock, knock");
+// 	  console.log("Who's there?");
+// 	  console.log(`Your server, listening on port ${port}`);
+// 	}) 
+//   });
+
+app.listen(port, function(){
+  console.log('Your server, listeining on port', port)
+})
